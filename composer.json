@@ -1,0 +1,13 @@
+{
+    "name": "liamkearn/phpdocdict",
+    "type": "project",
+    "authors": [
+        {
+            "name": "LiamKearn",
+            "email": "76269376+LiamKearn@users.noreply.github.com"
+        }
+    ],
+    "require": {
+        "symfony/finder": "^5.4"
+    }
+}

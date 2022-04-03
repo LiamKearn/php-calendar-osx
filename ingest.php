@@ -4,10 +4,7 @@ use Symfony\Component\Finder\Finder;
 
 require __DIR__ . '/vendor/autoload.php';
 
-function pntf(string $string, ...$values): void
-{
-    printf($string . \PHP_EOL, ...$values);
-}
+$startedtime = time();
 
 $fileHeader = <<<XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -28,15 +25,14 @@ $resources = (new Finder())
     ->name('*.html');
 
 if (!$resources->hasResults()) {
-    pntf('Can\'t find files');
+    printf('Can\'t find files');
 }
 
 foreach ($resources as $resource) {
     $path = $resource->getRealPath();
     $filename = $resource->getBasename('.html');
 
-    pntf('Running for file %s..', $filename);
-    $startedtime = time();
+    printf('Running for file %s...', $filename);
 
     // Convert HTML to XHTML
     $config = [
@@ -50,6 +46,35 @@ foreach ($resources as $resource) {
     $tidy = new tidy();
     $tidy->parseFile($path, $config);
     $tidy->cleanRepair();
+
+    $dom = new DOMDocument();
+    $dom->loadHTML((string) $tidy);
+
+    // Remove links to already packed styles in the head.
+    /** @var \DOMElement $head */
+    $head = $dom->getElementsByTagName('head')[0];
+    // The iterator here gets thrown by removal of nodes.
+    // See the comments on: https://www.php.net/manual/en/domnode.removechild.php (Accessed: 3/04/22).
+    $links = $head->getElementsByTagName('link');
+    $removeQueue = [];
+    foreach ($links as $link) {
+        /** @var \DOMElement $link */
+        $removeQueue[] = $link;
+    }
+    foreach ($removeQueue as $toRemove) {
+        /** @var \DOMElement $toRemove */
+        $toRemove->parentNode->removeChild($toRemove);
+    }
+
+    // Rewrite links to use x-dictionary.
+    foreach ($dom->getElementsByTagName('a') as $anchor) {
+        /** @var \DOMElement $anchor */
+        $href = $anchor->getAttribute('href');
+        $newhref = 'x-dictionary:r:' . str_replace('.html', '', $href);
+        $anchor->setAttribute('href', $newhref);
+    }
+
+    $content = $dom->saveXML($dom->getElementsByTagName('html')[0]);
 
     $template = <<<XML
     <d:entry id="{id}" d:title="{title}">
@@ -66,16 +91,12 @@ foreach ($resources as $resource) {
         '{title}' => $filename,
         '{fulldex}' => $filename,
         '{index}' => array_pop($filenamearr),
-        '{contents}' => $tidy,
+        '{contents}' => $content,
     ]);
 
     file_put_contents(__DIR__ . '/PHPDict.xml', $result, FILE_APPEND);
 
-    pntf(
-        'Done for file %s, Took: %s',
-        $filename,
-        time() - $startedtime
-    );
+    printf('   Done!!' . PHP_EOL);
 }
 
 $fileFooter = <<<XML
@@ -83,3 +104,11 @@ $fileFooter = <<<XML
 XML;
 
 file_put_contents(__DIR__ . '/PHPDict.xml', $fileFooter, FILE_APPEND);
+
+printf(
+    '---%sFINISHED PROCESSING! Took: %s seconds%s---%s',
+    PHP_EOL,
+    time() - $startedtime,
+    PHP_EOL,
+    PHP_EOL
+);
